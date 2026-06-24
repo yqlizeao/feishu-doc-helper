@@ -9,6 +9,27 @@ export interface MarkdownExportResult {
 }
 
 /**
+ * 清理文本中的零宽字符和不可见字符
+ */
+function cleanText(text: string): string {
+    if (!text) return '';
+
+    // 移除常见的零宽字符
+    text = text.replace(/​/g, ''); // 零宽空格
+    text = text.replace(/‌/g, ''); // 零宽非连接符
+    text = text.replace(/‍/g, ''); // 零宽连接符
+    text = text.replace(/﻿/g, ''); // 零宽非断空格
+    text = text.replace(/⁠/g, ''); // 词连接符
+    text = text.replace(/­/g, ''); // 软连字符
+
+    // 移除控制字符 (U+0000 到 U+001F，除了常见的换行符)
+    text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+
+    return text.trim();
+}
+
+
+/**
  * 在新标签页中打开文档并提取 Markdown
  * @param url 文档 URL
  * @param fileName 文件名（用于显示进度）
@@ -132,13 +153,18 @@ function getDocumentTitleFromDoc(doc: Document): string {
 
     for (const selector of selectors) {
         const element = doc.querySelector(selector);
-        if (element && element.textContent) {
-            return element.textContent.trim();
+        if (element) {
+            const text = (element as HTMLElement).innerText || element.textContent || '';
+            const cleaned = cleanText(text);
+            if (cleaned) {
+                return cleaned;
+            }
         }
     }
 
     // 回退到页面标题
-    return doc.title.split('-')[0].trim() || 'Untitled';
+    const title = doc.title.split('-')[0].trim() || 'Untitled';
+    return cleanText(title);
 }
 
 /**
@@ -431,13 +457,17 @@ function processTable(table: HTMLElement): string {
  * 获取元素的文本内容
  */
 function getTextContent(element: HTMLElement): string {
-    return element.textContent?.trim() || '';
+    // 优先使用 innerText，它更接近用户看到的内容
+    const text = element.innerText || element.textContent || '';
+    return cleanText(text);
 }
 
 /**
  * 清理 Markdown 文本
  */
 function cleanMarkdown(markdown: string): string {
+    // 清理零宽字符
+    markdown = cleanText(markdown);
     // 移除多余的空行（超过2个连续换行）
     return markdown.replace(/\n{3,}/g, '\n\n').trim();
 }
