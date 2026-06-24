@@ -5,6 +5,36 @@
  */
 
 /**
+ * 飞书块类型枚举
+ * @see https://open.feishu.cn/document/client-docs/docs-add-on/06-data-structure/BlockType
+ */
+export enum BlockType {
+    PAGE = 'page',
+    TEXT = 'text',
+    HEADING1 = 'heading1',
+    HEADING2 = 'heading2',
+    HEADING3 = 'heading3',
+    HEADING4 = 'heading4',
+    HEADING5 = 'heading5',
+    HEADING6 = 'heading6',
+    HEADING7 = 'heading7',
+    HEADING8 = 'heading8',
+    HEADING9 = 'heading9',
+    CODE = 'code',
+    BULLET = 'bullet',
+    ORDERED = 'ordered',
+    TODO = 'todo',
+    QUOTE = 'quote',
+    QUOTE_CONTAINER = 'quote_container',
+    DIVIDER = 'divider',
+    IMAGE = 'image',
+    FILE = 'file',
+    TABLE = 'table',
+    GRID = 'grid',
+    CALLOUT = 'callout',
+}
+
+/**
  * 检查当前页面是否为飞书新版文档（Docx）
  */
 export function isFeishuDocx(): boolean {
@@ -36,7 +66,7 @@ export function getDocumentTitle(): string {
         if (rootBlock) {
             // 从第一个标题块获取标题
             const firstHeading = rootBlock.children?.find((child: any) =>
-                child.type >= 2 && child.type <= 10 // Heading1 到 Heading9
+                child.type && child.type.startsWith('heading')
             );
             if (firstHeading?.text) {
                 return firstHeading.text;
@@ -96,8 +126,10 @@ export async function convertDocxToMarkdown(): Promise<string> {
         throw new Error('无法获取文档内容');
     }
 
+    console.log('[convertDocxToMarkdown] rootBlock:', rootBlock);
+    console.log('[convertDocxToMarkdown] children:', rootBlock.children);
+
     // 简化版 Markdown 转换
-    // TODO: 实现完整的块转换逻辑（参考 cloud-document-converter/packages/lark/src/docx.ts）
     const markdown = await convertBlockToMarkdown(rootBlock);
 
     return markdown;
@@ -115,44 +147,61 @@ async function convertBlockToMarkdown(block: any, level: number = 0): Promise<st
 
     for (const child of block.children) {
         const blockType = child.type;
+        console.log('[convertBlockToMarkdown] 处理块:', blockType, child);
 
         // 根据块类型转换
         switch (blockType) {
-            case 2: // Heading1
-            case 3: // Heading2
-            case 4: // Heading3
-            case 5: // Heading4
-            case 6: // Heading5
-            case 7: // Heading6
-                const headingLevel = blockType - 1;
-                const headingText = extractText(child);
-                markdown += `${'#'.repeat(headingLevel)} ${headingText}\n\n`;
+            case BlockType.HEADING1:
+                markdown += `# ${extractText(child)}\n\n`;
+                break;
+            case BlockType.HEADING2:
+                markdown += `## ${extractText(child)}\n\n`;
+                break;
+            case BlockType.HEADING3:
+                markdown += `### ${extractText(child)}\n\n`;
+                break;
+            case BlockType.HEADING4:
+                markdown += `#### ${extractText(child)}\n\n`;
+                break;
+            case BlockType.HEADING5:
+                markdown += `##### ${extractText(child)}\n\n`;
+                break;
+            case BlockType.HEADING6:
+                markdown += `###### ${extractText(child)}\n\n`;
                 break;
 
-            case 1: // Text/Paragraph
+            case BlockType.TEXT:
                 const text = extractText(child);
                 if (text.trim()) {
                     markdown += `${text}\n\n`;
                 }
                 break;
 
-            case 13: // Code
+            case BlockType.CODE:
                 const codeText = extractText(child);
-                const language = child.language || '';
+                const language = (child as any).language || '';
                 markdown += `\`\`\`${language}\n${codeText}\n\`\`\`\n\n`;
                 break;
 
-            case 27: // BulletList
-            case 28: // OrderedList
-                markdown += await convertListToMarkdown(child, blockType === 28);
+            case BlockType.BULLET:
+            case BlockType.ORDERED:
+                markdown += await convertListItem(child, blockType === BlockType.ORDERED, level);
+                break;
+
+            case BlockType.DIVIDER:
+                markdown += `---\n\n`;
+                break;
+
+            case BlockType.QUOTE:
+            case BlockType.QUOTE_CONTAINER:
+                const quoteText = extractText(child);
+                markdown += `> ${quoteText}\n\n`;
                 break;
 
             // TODO: 添加更多块类型的支持
             // - 表格 (BlockType.TABLE)
             // - 图片 (BlockType.IMAGE)
             // - 文件 (BlockType.FILE)
-            // - 引用块 (BlockType.QUOTE)
-            // - 分割线 (BlockType.DIVIDER)
             // 等等...
 
             default:
@@ -165,7 +214,7 @@ async function convertBlockToMarkdown(block: any, level: number = 0): Promise<st
         }
 
         // 递归处理子块
-        if (child.children && child.children.length > 0) {
+        if (child.children && child.children.length > 0 && blockType !== BlockType.BULLET && blockType !== BlockType.ORDERED) {
             markdown += await convertBlockToMarkdown(child, level + 1);
         }
     }
@@ -174,26 +223,21 @@ async function convertBlockToMarkdown(block: any, level: number = 0): Promise<st
 }
 
 /**
- * 转换列表块
+ * 转换列表项
  */
-async function convertListToMarkdown(block: any, isOrdered: boolean): Promise<string> {
-    let markdown = '';
-    const items = block.children || [];
+async function convertListItem(block: any, isOrdered: boolean, level: number): Promise<string> {
+    const indent = '  '.repeat(level);
+    const text = extractText(block);
+    const prefix = isOrdered ? '1. ' : '- ';
+    let markdown = `${indent}${prefix}${text}\n`;
 
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const text = extractText(item);
-        const prefix = isOrdered ? `${i + 1}. ` : '- ';
-        markdown += `${prefix}${text}\n`;
-
-        // 递归处理嵌套列表
-        if (item.children && item.children.length > 0) {
-            const nested = await convertListToMarkdown(item, isOrdered);
-            markdown += nested.split('\n').map(line => '  ' + line).join('\n') + '\n';
+    // 递归处理嵌套列表
+    if (block.children && block.children.length > 0) {
+        for (const child of block.children) {
+            markdown += await convertListItem(child, isOrdered, level + 1);
         }
     }
 
-    markdown += '\n';
     return markdown;
 }
 
@@ -208,10 +252,10 @@ function extractText(block: any): string {
         return cleanText(block.text);
     }
 
-    // 如果有 operations（富文本），提取文本
-    if (block.operations && Array.isArray(block.operations)) {
-        return block.operations
-            .map((op: any) => op.insert || '')
+    // 如果有 textRun（富文本），提取文本
+    if (block.textRun && Array.isArray(block.textRun)) {
+        return block.textRun
+            .map((run: any) => run.text || '')
             .join('')
             .trim();
     }
