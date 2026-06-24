@@ -178,8 +178,17 @@ const Menu: React.FC = () => {
                         analytics.trackError(`导出文件失败: ${errorMsg}`);
 
                         // 如果是权限错误，尝试使用 DOM 解析 fallback
-                        if (isPermissionError && file.url) {
-                            console.log(`尝试使用 DOM 解析 fallback 导出: ${file.name}`);
+                        if (isPermissionError) {
+                            // 构建文档 URL（如果没有 url 字段）
+                            let docUrl = file.url;
+                            if (!docUrl) {
+                                // 根据 obj_type 构建 URL
+                                const urlPrefix = file.obj_type === 22 ? '/docx/' : '/wiki/';
+                                docUrl = `${window.location.origin}${urlPrefix}${file.obj_token}`;
+                                console.log(`构建文档 URL: ${docUrl}`);
+                            }
+
+                            console.log(`尝试使用 DOM 解析 fallback 导出: ${file.name}, URL: ${docUrl}`);
 
                             api.info({
                                 key: 'export-progress',
@@ -193,7 +202,7 @@ const Menu: React.FC = () => {
 
                             try {
                                 // 在新标签页打开并提取内容
-                                const markdownResult = await extractFromUrl(file.url, file.name);
+                                const markdownResult = await extractFromUrl(docUrl, file.name);
 
                                 if (markdownResult) {
                                     const folderPath = file.path || '';
