@@ -239,7 +239,22 @@ export async function createExportTask(data: { token: string; obj_type: number }
         }
         let json = await resp.json();
         console.log('[createExportTask] response:', json);
+
+        // 检查响应中的错误代码
+        if (json.code !== 0) {
+            console.error(`[createExportTask] API error! code: ${json.code}, msg: ${json.msg}`);
+            // 权限相关的错误码
+            if (json.code === 403 || json.code === 90001 || json.msg?.includes('权限') || json.msg?.includes('permission')) {
+                throw new Error(`没有导出权限: ${json.msg || '请检查文档权限设置'}`);
+            }
+            throw new Error(`导出失败: ${json.msg || json.code}`);
+        }
+
         const ticket = json?.data?.ticket || null;
+        if (!ticket) {
+            console.warn('[createExportTask] no ticket in response');
+            throw new Error('未能获取导出任务ID');
+        }
         console.log(`[createExportTask] created task with ticket: ${ticket}`);
         return ticket;
     } catch (error) {

@@ -285,11 +285,13 @@ async function getFileList(obj_token: string, folder_path: string, fileList: Fei
             if(!node.name) {
                 node.name = "未命名文件";
             }
-            
+
             if (node.obj_token != obj_token && node.type == 0) {
-                await getFileList(node.obj_token, `${folder_path}/${node.name.replace(/\//g, '-')}`, fileList, folderList, node.obj_token);
+                // 先添加文件夹到列表，再递归获取其子内容
                 let path = `${folder_path}/${node.name.replace(/\//g, '-')}`;
-                folderList.push({ path: path, obj_token: node.obj_token, name: node.name.replace(/\//g, '-'), parentToken: obj_token, url: node.url }); 
+                folderList.push({ path: path, obj_token: node.obj_token, name: node.name.replace(/\//g, '-'), parentToken: obj_token, url: node.url });
+                // 然后递归获取子文件夹内容
+                await getFileList(node.obj_token, path, fileList, folderList, node.obj_token);
             } else if (node.obj_token != obj_token && node.type != 0) {
                 // 检查URL是否存在
                 if (!node.url) {
