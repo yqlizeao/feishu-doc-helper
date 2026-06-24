@@ -45,6 +45,47 @@ const Menu: React.FC = () => {
     const [api, contextHolder] = notification.useNotification();
 
     /**
+     * 递归收集节点及其所有子节点中的文件 token
+     */
+    const collectAllFileTokens = (node: TreeDataNode, tokenSet: Set<string>) => {
+        // 如果是文件节点，添加其 token
+        if (node.type === 'file' && node.obj_token) {
+            tokenSet.add(node.obj_token);
+        }
+        // 递归处理子节点
+        if (node.children && node.children.length > 0) {
+            node.children.forEach(child => collectAllFileTokens(child, tokenSet));
+        }
+    };
+
+    /**
+     * 根据选中的 keys 收集所有需要导出的文件 token
+     */
+    const collectExportTokens = (checkedKeys: string[], treeData: TreeDataNode[]): Set<string> => {
+        console.log('collectExportTokens: 开始收集，checkedKeys 数量:', checkedKeys.length);
+        const tokenSet = new Set<string>();
+
+        // 递归查找树节点
+        const findAndCollect = (nodes: TreeDataNode[]) => {
+            nodes.forEach(node => {
+                if (checkedKeys.includes(node.key as string)) {
+                    // 找到选中的节点，收集它及其所有子节点的文件 token
+                    console.log('collectExportTokens: 找到选中节点', node.title, 'key:', node.key);
+                    collectAllFileTokens(node, tokenSet);
+                }
+                // 继续在子节点中查找
+                if (node.children && node.children.length > 0) {
+                    findAndCollect(node.children);
+                }
+            });
+        };
+
+        findAndCollect(treeData);
+        console.log('collectExportTokens: 收集完成，共', tokenSet.size, '个文件 token');
+        return tokenSet;
+    };
+
+    /**
      * 导出选定的文档
      */
     async function onExportDocs(selectedTokens: string[]) {
@@ -56,7 +97,11 @@ const Menu: React.FC = () => {
             const fileList = await getLocalStorageData('feishuFileList') as FeishuFile[];
             console.log('onExportDocs: 从缓存获取文件列表', fileList);
 
-            const exportList = fileList.filter((file: FeishuFile) => selectedTokens.includes(file.obj_token));
+            // 使用递归收集函数获取所有需要导出的文件 token
+            const exportTokenSet = collectExportTokens(selectedTokens, treeData);
+            console.log('onExportDocs: 收集到的所有文件 tokens:', Array.from(exportTokenSet));
+
+            const exportList = fileList.filter((file: FeishuFile) => exportTokenSet.has(file.obj_token));
             console.log(`onExportDocs: 待导出的文件列表，共 ${exportList.length} 个`, exportList);
 
             api.info({
