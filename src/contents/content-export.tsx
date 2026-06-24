@@ -497,7 +497,7 @@ const Menu: React.FC = () => {
                         onSelect={onSelect}
                         selectedKeys={selectedKeys}
                         treeData={treeData}
-                        showIcon={false}
+                        showIcon={true}
                         defaultExpandAll={false}
                         height={350}
                         itemHeight={28}
@@ -515,9 +515,11 @@ const Menu: React.FC = () => {
                                 }
                             }
                             return (
-                                <div style={{ display: 'flex', alignItems: 'center' }}>
-                                    {icon && <FontAwesomeIcon icon={icon} style={{ marginRight: 8, color: 'var(--icon-n2)' }} />}
-                                    <span>{node.title}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                    {icon && <FontAwesomeIcon icon={icon} style={{ marginRight: 8, color: 'var(--icon-n2)', flexShrink: 0 }} />}
+                                    <span style={{ color: 'inherit', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {node.title || '未命名'}
+                                    </span>
                                 </div>
                             );
                         }}
