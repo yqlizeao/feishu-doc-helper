@@ -197,7 +197,7 @@ export async function fetchMySpaceFileList() {
 export async function createExportTask(data: { token: string; obj_type: number }): Promise<string | null> {
     console.log('[createExportTask] creating export task with data:', data);
     try {
-        await sleep(500);
+        await sleep(1500); // 增加到 1.5 秒，避免 429 错误
         const requestId = 'bbAtOlQGYEbs-' + uuidv4().replace(/-/g, '');
         
         const requestData = {

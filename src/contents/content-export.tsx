@@ -115,10 +115,16 @@ const Menu: React.FC = () => {
             let successCount = 0;
             let failedCount = 0;
             const failedFiles: Array<{name: string, reason: string}> = [];
-            const batchSize = 2;
+            const batchSize = 1; // 改为1，避免并发请求过多
 
             for (let i = 0; i < exportList.length; i += batchSize) {
                 const batch = exportList.slice(i, i + batchSize);
+
+                // 批次之间增加延迟，避免 429 错误
+                if (i > 0) {
+                    await sleep(1000); // 每个请求之间等待 1 秒
+                }
+
                 await Promise.all(batch.map(async (file) => {
                     const percent = Math.round(((++count) / exportList.length) * 100);
                     api.info({
