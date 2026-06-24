@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试飞书 PageMain API</title>
+</head>
+<body>
+    <h1>在飞书文档页面打开控制台，运行以下代码：</h1>
+    <pre>
+// 检查 PageMain 是否存在
+console.log('PageMain:', window.PageMain);
+
+// 检查 rootBlockModel
+if (window.PageMain) {
+    console.log('rootBlockModel:', window.PageMain.blockManager?.rootBlockModel);
+
+    // 获取页面标题
+    const root = window.PageMain.blockManager?.rootBlockModel;
+    if (root) {
+        console.log('文档类型:', root.type);
+        console.log('子块数量:', root.children?.length);
+        console.log('第一个块:', root.children?.[0]);
+    }
+}
+
+// 检查 User 对象
+console.log('User:', window.User);
+console.log('Language:', window.User?.language);
+    </pre>
+
+    <p>说明：如果 window.PageMain 存在，我们就可以直接使用飞书的内部 API，不需要解析 DOM！</p>
+</body>
+</html>

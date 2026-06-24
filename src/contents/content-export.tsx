@@ -5,7 +5,7 @@ import { faShareFromSquare } from '@fortawesome/free-regular-svg-icons';
 import { faRefresh, faFileLines, faFileExcel, faFolder } from '@fortawesome/free-solid-svg-icons';
 import type { PlasmoCSConfig } from 'plasmo';
 import { getTreeData, loadAllFileList } from '../services/export-service';
-import { extractDocumentAsMarkdown, extractFromUrl } from '../services/markdown-fallback';
+import { convertDocxToMarkdown, isFeishuDocx, isFeishuDoc } from '../services/lark-docx-converter';
 import type { TreeDataNode } from '../types/feishu';
 import { getFileExtensionByObjType, getFileTypeByObjType } from '../utils/common';
 import { createExportTask, download, waitForExportResult } from '../api/feishu-api';
@@ -83,6 +83,67 @@ const Menu: React.FC = () => {
         findAndCollect(treeData);
         console.log('collectExportTokens: 收集完成，共', tokenSet.size, '个文件 token');
         return tokenSet;
+    };
+
+    /**
+     * 在新标签页中打开文档并使用 PageMain API 提取 Markdown
+     */
+    const extractMarkdownFromNewTab = async (url: string, fileName: string): Promise<string | null> => {
+        return new Promise((resolve) => {
+            console.log(`[extractMarkdownFromNewTab] 正在打开文档: ${fileName}`);
+
+            // 在新标签页打开文档
+            const newTab = window.open(url, '_blank');
+
+            if (!newTab) {
+                console.error('[extractMarkdownFromNewTab] 无法打开新标签页，可能被浏览器拦截');
+                resolve(null);
+                return;
+            }
+
+            // 等待页面加载完成，然后注入提取脚本
+            const checkInterval = setInterval(async () => {
+                try {
+                    // 检查新标签页是否已加载飞书文档
+                    if (newTab.closed) {
+                        clearInterval(checkInterval);
+                        console.error('[extractMarkdownFromNewTab] 标签页被关闭');
+                        resolve(null);
+                        return;
+                    }
+
+                    // 尝试访问新标签页的 window 对象
+                    // 注意：由于同源策略，这可能不会直接工作
+                    // 我们需要通过 content script 来注入代码
+                    console.log('[extractMarkdownFromNewTab] 等待页面加载...');
+
+                    // 等待5秒后尝试关闭标签页并返回
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        // TODO: 这里需要更好的通信机制
+                        // 暂时返回 null，需要实现 message passing
+                        console.warn('[extractMarkdownFromNewTab] 需要实现消息传递机制');
+                        newTab.close();
+                        resolve(null);
+                    }, 5000);
+
+                } catch (error) {
+                    console.error('[extractMarkdownFromNewTab] 提取失败:', error);
+                    clearInterval(checkInterval);
+                    newTab.close();
+                    resolve(null);
+                }
+            }, 500);
+
+            // 超时保护（30秒）
+            setTimeout(() => {
+                clearInterval(checkInterval);
+                if (!newTab.closed) {
+                    newTab.close();
+                }
+                resolve(null);
+            }, 30000);
+        });
     };
 
     /**
@@ -177,7 +238,7 @@ const Menu: React.FC = () => {
                         console.error(`onExportDocs: 导出文件 ${file.name} 失败`, error);
                         analytics.trackError(`导出文件失败: ${errorMsg}`);
 
-                        // 如果是权限错误，尝试使用 DOM 解析 fallback
+                        // 如果是权限错误，尝试使用 PageMain API fallback
                         if (isPermissionError) {
                             // 构建文档 URL（如果没有 url 字段）
                             let docUrl = file.url;
@@ -188,38 +249,38 @@ const Menu: React.FC = () => {
                                 console.log(`构建文档 URL: ${docUrl}`);
                             }
 
-                            console.log(`尝试使用 DOM 解析 fallback 导出: ${file.name}, URL: ${docUrl}`);
+                            console.log(`尝试使用 PageMain API fallback 导出: ${file.name}, URL: ${docUrl}`);
 
                             api.info({
                                 key: 'export-progress',
                                 message: `正在尝试 Markdown 导出 (${count}/${exportList.length})`,
                                 description: <>
-                                    <div>{file.name} (无导出权限，尝试提取页面内容)</div>
+                                    <div>{file.name} (无导出权限，尝试从页面提取)</div>
                                     <Progress percent={percent} />
                                 </>,
                                 duration: 0,
                             });
 
                             try {
-                                // 在新标签页打开并提取内容
-                                const markdownResult = await extractFromUrl(docUrl, file.name);
+                                // 在新标签页打开并使用 PageMain API 提取
+                                const markdown = await extractMarkdownFromNewTab(docUrl, file.name);
 
-                                if (markdownResult) {
+                                if (markdown) {
                                     const folderPath = file.path || '';
                                     const fileName = `${file.name}.md`;
                                     const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName;
-                                    const markdownBlob = new Blob([markdownResult.markdown], { type: 'text/markdown' });
+                                    const markdownBlob = new Blob([markdown], { type: 'text/markdown' });
                                     zip.file(fullPath, markdownBlob);
-                                    console.log(`onExportDocs: 使用 DOM 解析导出成功: ${fileName}`);
+                                    console.log(`onExportDocs: 使用 PageMain API 导出成功: ${fileName}`);
                                     successCount++;
                                     // 记录为部分成功（格式降级）
                                     failedFiles.push({name: file.name, reason: '⚠️ 权限不足，已导出为Markdown格式'});
                                 } else {
                                     failedCount++;
-                                    failedFiles.push({name: file.name, reason: `${errorMsg}（DOM提取也失败）`});
+                                    failedFiles.push({name: file.name, reason: `${errorMsg}（Markdown提取也失败）`});
                                 }
                             } catch (fallbackError) {
-                                console.error('DOM fallback 失败:', fallbackError);
+                                console.error('PageMain API fallback 失败:', fallbackError);
                                 failedCount++;
                                 failedFiles.push({name: file.name, reason: errorMsg});
                             }
@@ -312,29 +373,34 @@ const Menu: React.FC = () => {
             api.info({
                 key: 'markdown-export',
                 message: '正在导出为 Markdown...',
-                description: '从页面提取内容中',
+                description: '从飞书文档提取内容中',
                 duration: 0,
             });
 
-            const result = await extractDocumentAsMarkdown();
-
-            if (result) {
-                const { markdown, title } = result;
-                const blob = new Blob([markdown], { type: 'text/markdown' });
-                saveAs(blob, `${title}-${getCurrentTimestamp()}.md`);
-
-                console.log('exportCurrentPageAsMarkdown: 导出成功');
-                analytics.trackPageView('/export-markdown/success', '导出 Markdown 成功');
-
-                api.success({
-                    key: 'markdown-export',
-                    message: '导出成功',
-                    description: `文档 "${title}" 已导出为 Markdown 格式`,
-                    duration: 3,
-                });
-            } else {
-                throw new Error('无法从当前页面提取内容');
+            // 检查是否为飞书文档
+            if (!isFeishuDocx()) {
+                if (isFeishuDoc()) {
+                    throw new Error('不支持旧版飞书文档（Doc 1.0）');
+                }
+                throw new Error('当前页面不是飞书文档');
             }
+
+            // 使用 PageMain API 转换
+            const markdown = await convertDocxToMarkdown();
+            const title = document.title.split('-')[0].trim() || 'Untitled';
+
+            const blob = new Blob([markdown], { type: 'text/markdown' });
+            saveAs(blob, `${title}-${getCurrentTimestamp()}.md`);
+
+            console.log('exportCurrentPageAsMarkdown: 导出成功');
+            analytics.trackPageView('/export-markdown/success', '导出 Markdown 成功');
+
+            api.success({
+                key: 'markdown-export',
+                message: '导出成功',
+                description: `文档 "${title}" 已导出为 Markdown 格式`,
+                duration: 3,
+            });
         } catch (error) {
             console.error('exportCurrentPageAsMarkdown: 导出失败', error);
             analytics.trackError('导出 Markdown 失败');
