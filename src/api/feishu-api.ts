@@ -243,8 +243,9 @@ export async function createExportTask(data: { token: string; obj_type: number }
         // 检查响应中的错误代码
         if (json.code !== 0) {
             console.error(`[createExportTask] API error! code: ${json.code}, msg: ${json.msg}`);
-            // 权限相关的错误码
-            if (json.code === 403 || json.code === 90001 || json.msg?.includes('权限') || json.msg?.includes('permission')) {
+            // 权限相关的错误码（1002, 403, 90001 等）
+            if (json.code === 1002 || json.code === 403 || json.code === 90001 ||
+                json.msg?.includes('权限') || json.msg?.includes('permission') || json.msg?.includes('no permission')) {
                 throw new Error(`没有导出权限: ${json.msg || '请检查文档权限设置'}`);
             }
             throw new Error(`导出失败: ${json.msg || json.code}`);
