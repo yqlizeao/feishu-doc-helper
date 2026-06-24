@@ -260,7 +260,8 @@ export async function createExportTask(data: { token: string; obj_type: number }
         return ticket;
     } catch (error) {
         console.error('[createExportTask] error:', error);
-        return null;
+        // 重新抛出异常，让调用方可以捕获并处理（例如触发 DOM Fallback）
+        throw error;
     }
 }
 
