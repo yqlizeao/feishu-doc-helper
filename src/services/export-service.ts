@@ -248,16 +248,19 @@ async function loadAllFileList() {
     
     // 构建树形结构
     const treeData = buildTreeStructure(fileList, folderList);
-    
+
     console.log("load result, fileList", fileList, "folderList", folderList, "treeData", treeData);
-    
+
+    // 转换为 TreeDataNode 后再存储，避免缓存结构问题
+    const treeDataNodes = treeData.map(node => convertTreeNodeToTreeData(node));
+
     // 存储数据
-    chrome.storage.local.set({ 
+    chrome.storage.local.set({
         'lastLoadTime': new Date().getTime(),
         'lastHostName': window.location.hostname,
         'feishuFileList': fileList,
         'feishuFolderList': folderList,
-        'feishuTreeData': treeData  // 新增：直接存储树形结构
+        'feishuTreeData': treeDataNodes  // 存储转换后的 TreeDataNode[]
     });
     analytics.trackPageView('/loadAllFileList/success', '文件列表加载成功');
 }
@@ -371,19 +374,27 @@ function convertTreeNodeToTreeData(node: TreeNode): TreeDataNode {
  */
 async function getTreeData(): Promise<TreeDataNode[]> {
     try {
-        const treeData = await getLocalStorageData('feishuTreeData') as TreeNode[];
+        const treeData = await getLocalStorageData('feishuTreeData') as TreeDataNode[];
         if (treeData && treeData.length > 0) {
-            return treeData.map(node => convertTreeNodeToTreeData(node));
+            console.log('getTreeData: 从缓存获取 TreeDataNode[]', treeData);
+            return treeData; // 直接返回，因为存储时已经是 TreeDataNode[] 格式
         }
-        
+
         // 如果没有树形数据，尝试从文件夹列表构建
         const folderList = await getLocalStorageData('feishuFolderList') as FeishuFolder[];
+        const fileList = await getLocalStorageData('feishuFileList') as FeishuFile[];
+
         if (!folderList || folderList.length === 0) {
+            console.warn('getTreeData: 没有文件夹列表');
             return [];
         }
-        
-        // 这里可以添加从folderList构建TreeDataNode的逻辑
-        return [];
+
+        // 从 fileList 和 folderList 重新构建树形结构
+        const treeNodes = buildTreeStructure(fileList || [], folderList);
+        const treeDataNodes = treeNodes.map(node => convertTreeNodeToTreeData(node));
+        console.log('getTreeData: 从文件列表重新构建', treeDataNodes);
+
+        return treeDataNodes;
     } catch (error) {
         console.error('getTreeData error:', error);
         return [];
